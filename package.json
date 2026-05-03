@@ -1,0 +1,183 @@
+{
+  "name": "zhihupost",
+  "displayName": "ZhihuPost",
+  "description": "Publish Markdown directly to Zhihu from VSCode via API",
+  "version": "0.1.0",
+  "publisher": "cygnus",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/cygnusyang/zhihupost.git"
+  },
+  "engines": {
+    "vscode": "^1.80.0"
+  },
+  "categories": [
+    "Other"
+  ],
+  "activationEvents": [
+    "onLanguage:markdown",
+    "onCommand:zhihupost.publishToZhihu",
+    "onCommand:zhihupost.publishFolderToZhihu",
+    "onCommand:zhihupost.loginZhihu",
+    "onCommand:zhihupost.logoutZhihu",
+    "onCommand:zhihupost.configureOptions",
+    "onCommand:zhihupost.preview"
+  ],
+  "main": "./out/extension.js",
+  "contributes": {
+    "configuration": {
+      "title": "ZhihuPost",
+      "properties": {
+        "zhihuPublisher.defaultTopics": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "default": [],
+          "description": "Default topic keywords for articles."
+        },
+        "zhihuPublisher.defaultColumn": {
+          "type": "string",
+          "default": "",
+          "description": "Default column slug for article collection."
+        },
+        "zhihuPublisher.publishDirectly": {
+          "type": "boolean",
+          "default": true,
+          "description": "Publish directly; disable to save as draft."
+        },
+        "zhihuPublisher.contentThemePreset": {
+          "type": "string",
+          "enum": [
+            "classic",
+            "magazine",
+            "minimal"
+          ],
+          "default": "classic",
+          "description": "Theme preset for article typography."
+        },
+        "zhihuPublisher.contentBodyFontSize": {
+          "type": "number",
+          "default": 16,
+          "minimum": 12,
+          "maximum": 22,
+          "description": "Body text font size (px)."
+        },
+        "zhihuPublisher.contentLineHeight": {
+          "type": "number",
+          "default": 1.85,
+          "minimum": 1.2,
+          "maximum": 2.4,
+          "description": "Body text line height."
+        },
+        "zhihuPublisher.contentTextColor": {
+          "type": "string",
+          "default": "#1f2329",
+          "description": "Body text color (HEX)."
+        },
+        "zhihuPublisher.contentHeadingColor": {
+          "type": "string",
+          "default": "#0f172a",
+          "description": "Heading color (HEX)."
+        },
+        "zhihuPublisher.contentLinkColor": {
+          "type": "string",
+          "default": "#0969da",
+          "description": "Link/accent color (HEX)."
+        },
+        "zhihuPublisher.batchRecursive": {
+          "type": "boolean",
+          "default": false,
+          "description": "Recursively scan subfolders when batch publishing a folder."
+        },
+        "zhihuPublisher.batchContinueOnError": {
+          "type": "boolean",
+          "default": true,
+          "description": "Continue publishing remaining files when one file fails during folder batch publishing."
+        },
+        "zhihuPublisher.batchDelaySeconds": {
+          "type": "number",
+          "default": 3,
+          "minimum": 0,
+          "maximum": 120,
+          "description": "Delay in seconds between files during folder batch publishing."
+        },
+        "zhihuPublisher.batchFileOrder": {
+          "type": "string",
+          "enum": [
+            "name-asc",
+            "name-desc",
+            "mtime-asc",
+            "mtime-desc"
+          ],
+          "default": "name-asc",
+          "description": "File order for folder batch publishing."
+        },
+        "zhihuPublisher.batchDryRunDefault": {
+          "type": "boolean",
+          "default": true,
+          "description": "Show a preflight confirmation before folder batch publishing."
+        }
+      }
+    },
+    "commands": [
+      {
+        "command": "zhihupost.publishToZhihu",
+        "title": "ZhihuPost: Publish to Zhihu"
+      },
+      {
+        "command": "zhihupost.publishFolderToZhihu",
+        "title": "ZhihuPost: Publish Folder to Zhihu"
+      },
+      {
+        "command": "zhihupost.loginZhihu",
+        "title": "ZhihuPost: Login to Zhihu"
+      },
+      {
+        "command": "zhihupost.logoutZhihu",
+        "title": "ZhihuPost: Sign Out of Zhihu"
+      },
+      {
+        "command": "zhihupost.configureOptions",
+        "title": "ZhihuPost: Configure Publishing Options"
+      },
+      {
+        "command": "zhihupost.preview",
+        "title": "ZhihuPost: Preview Zhihu Article"
+      }
+    ],
+    "menus": {
+      "explorer/context": [
+        {
+          "command": "zhihupost.publishFolderToZhihu",
+          "when": "explorerResourceIsFolder",
+          "group": "navigation@50"
+        }
+      ]
+    }
+  },
+  "scripts": {
+    "vscode:prepublish": "npm run compile",
+    "compile": "tsc -p ./ && cp -r src/vendor out/vendor",
+    "watch": "tsc -watch -p ./",
+    "test": "jest",
+    "test:coverage": "jest --coverage --coverageReporters=json-summary"
+  },
+  "dependencies": {
+    "@types/qrcode-generator": "^0.0.16",
+    "markdown-it": "^14.1.0",
+    "node-fetch": "^3.3.2",
+    "playwright": "^1.59.1",
+    "qrcode-generator": "^2.0.4"
+  },
+  "devDependencies": {
+    "@types/jest": "^30.0.0",
+    "@types/markdown-it": "^14.1.2",
+    "@types/node": "^20.10.0",
+    "@types/vscode": "^1.80.0",
+    "jest": "^30.3.0",
+    "ts-jest": "^29.4.9",
+    "typescript": "^5.9.3"
+  }
+}
