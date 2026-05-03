@@ -2,7 +2,7 @@
   "name": "zhihupost",
   "displayName": "ZhihuPost",
   "description": "Publish Markdown directly to Zhihu from VSCode via API",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "publisher": "cygnus",
   "license": "MIT",
   "repository": {
