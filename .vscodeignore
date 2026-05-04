@@ -10,6 +10,11 @@ src/**
 coverage/**
 
 node_modules/.bin/**
+node_modules/@types/**
+node_modules/typescript/**
+node_modules/ts-jest/**
+node_modules/jest/**
+node_modules/@jest/**
 node_modules/**/test/**
 node_modules/**/tests/**
 node_modules/**/example/**

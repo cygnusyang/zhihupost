@@ -159,7 +159,7 @@
   },
   "scripts": {
     "vscode:prepublish": "npm run compile",
-    "compile": "tsc -p ./ && cp -r src/vendor out/vendor",
+    "compile": "tsc -p ./ && rm -rf out/vendor && cp -r src/vendor out/vendor",
     "watch": "tsc -watch -p ./",
     "test": "jest",
     "test:coverage": "jest --coverage --coverageReporters=json-summary"
