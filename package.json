@@ -2,7 +2,7 @@
   "name": "zhihupost",
   "displayName": "ZhihuPost",
   "description": "Publish Markdown directly to Zhihu from VSCode via API",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "publisher": "cygnus",
   "license": "MIT",
   "repository": {
@@ -17,14 +17,22 @@
   ],
   "activationEvents": [
     "onLanguage:markdown",
+    "onStartupFinished",
     "onCommand:zhihupost.publishToZhihu",
     "onCommand:zhihupost.publishFolderToZhihu",
     "onCommand:zhihupost.loginZhihu",
     "onCommand:zhihupost.logoutZhihu",
     "onCommand:zhihupost.configureOptions",
-    "onCommand:zhihupost.preview"
+    "onCommand:zhihupost.preview",
+    "onCommand:zhihupost.schedulePublish",
+    "onCommand:zhihupost.listScheduledTasks",
+    "onCommand:zhihupost.deleteScheduledTask",
+    "onCommand:zhihupost.editScheduledTask"
   ],
   "main": "./out/extension.js",
+  "bin": {
+    "zhihupost-publish": "./out/cli/index.js"
+  },
   "contributes": {
     "configuration": {
       "title": "ZhihuPost",
@@ -145,6 +153,22 @@
       {
         "command": "zhihupost.preview",
         "title": "ZhihuPost: Preview Zhihu Article"
+      },
+      {
+        "command": "zhihupost.schedulePublish",
+        "title": "ZhihuPost: Schedule Publish"
+      },
+      {
+        "command": "zhihupost.listScheduledTasks",
+        "title": "ZhihuPost: List Scheduled Tasks"
+      },
+      {
+        "command": "zhihupost.deleteScheduledTask",
+        "title": "ZhihuPost: Delete Scheduled Task"
+      },
+      {
+        "command": "zhihupost.editScheduledTask",
+        "title": "ZhihuPost: Edit Scheduled Task"
       }
     ],
     "menus": {
@@ -162,14 +186,20 @@
     "compile": "tsc -p ./ && rm -rf out/vendor && cp -r src/vendor out/vendor",
     "watch": "tsc -watch -p ./",
     "test": "jest",
-    "test:coverage": "jest --coverage --coverageReporters=json-summary"
+    "test:coverage": "jest --coverage --coverageReporters=json-summary",
+    "install-cli": "node scripts/install-cli.js",
+    "postcompile": "npm run install-cli"
   },
   "dependencies": {
     "@types/qrcode-generator": "^0.0.16",
+    "@types/uuid": "^9.0.0",
+    "commander": "^12.0.0",
     "markdown-it": "^14.1.0",
+    "mermaid": "^10.9.1",
     "node-fetch": "^3.3.2",
     "playwright": "^1.59.1",
-    "qrcode-generator": "^2.0.4"
+    "qrcode-generator": "^2.0.4",
+    "uuid": "^9.0.0"
   },
   "devDependencies": {
     "@types/jest": "^30.0.0",

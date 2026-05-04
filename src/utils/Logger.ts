@@ -3,7 +3,15 @@ export interface LogOutput {
   show?(preserveFocus?: boolean): void;
 }
 
-export class Logger {
+export interface Logger {
+  info(message: string, details?: unknown): void;
+  warn(message: string, details?: unknown): void;
+  error(message: string, details?: unknown): void;
+  debug(message: string, details?: unknown): void;
+  show?(): void;
+}
+
+export class OutputLogger implements Logger {
   constructor(private output?: LogOutput) {}
 
   setOutput(output: LogOutput): void {
@@ -20,6 +28,10 @@ export class Logger {
 
   error(message: string, details?: unknown): void {
     this.write('ERROR', message, details);
+  }
+
+  debug(message: string, details?: unknown): void {
+    this.write('DEBUG', message, details);
   }
 
   show(): void {
@@ -59,4 +71,4 @@ export class Logger {
   }
 }
 
-export const defaultLogger = new Logger();
+export const defaultLogger = new OutputLogger();

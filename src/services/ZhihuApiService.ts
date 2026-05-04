@@ -6,6 +6,7 @@ import { CookieManager, type ZhihuCookies } from './CookieManager';
 import { Zse96Signer } from './Zse96Signer';
 import type { ContentStyleSettings } from './SettingsService';
 import { MarkdownRenderer } from '../utils/MarkdownRenderer';
+import { MermaidImageRenderer } from '../utils/MermaidImageRenderer';
 import { ImageUploader, type ImageInfo } from '../utils/ImageUploader';
 import { QrLoginService, type QrLoginResult } from './QrLoginService';
 import { BrowserLoginService, type BrowserLoginResult } from './BrowserLoginService';
@@ -52,6 +53,7 @@ export class ZhihuApiService {
   private cookieManager: CookieManager;
   private signer: Zse96Signer;
   private renderer: MarkdownRenderer;
+  private mermaidRenderer: MermaidImageRenderer;
   private imageUploader: ImageUploader;
   private qrLogin: QrLoginService;
   private browserLogin: BrowserLoginService;
@@ -61,6 +63,7 @@ export class ZhihuApiService {
     this.cookieManager = new CookieManager();
     this.signer = new Zse96Signer();
     this.renderer = new MarkdownRenderer();
+    this.mermaidRenderer = new MermaidImageRenderer(this.logger);
     this.imageUploader = new ImageUploader();
     this.qrLogin = new QrLoginService(this.cookieManager);
     this.browserLogin = new BrowserLoginService(this.cookieManager);
@@ -164,7 +167,8 @@ export class ZhihuApiService {
       sourceBaseDir: params.sourceBaseDir,
     });
     const cookies = await this.ensureAuth();
-    let htmlContent = this.renderer.render(params.content, params.contentStyle);
+    const contentWithMermaidImages = await this.mermaidRenderer.replaceMermaidBlocks(params.content);
+    let htmlContent = this.renderer.render(contentWithMermaidImages, params.contentStyle);
     this.logger.info('Publish: markdown rendered', { htmlLength: htmlContent.length });
 
     // Upload local images and replace URLs

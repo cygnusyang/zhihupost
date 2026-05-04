@@ -6,32 +6,37 @@
 
 ZhihuPost 采用 API 驱动架构，通过知乎内部 Web API 完成发布、图片上传、登录态校验和二维码登录：
 
-```
-┌─────────────────────────────────────────────────────┐
-│                    VSCode Extension                  │
-│  ┌─────────────┐  ┌─────────────┐  ┌─────────────┐ │
-│  │ Commands     │  │ Settings    │  │ WebView     │ │
-│  │ (extension.ts)│  │ Service    │  │ Preview     │ │
-│  └──────┬──────┘  └──────┬──────┘  └──────┬──────┘ │
-│         │                │                │         │
-│  ┌──────┴────────────────┴────────────────┴──────┐ │
-│  │              ZhihuApiService                    │ │
-│  │  ┌──────────┐ ┌──────────┐ ┌────────────────┐ │ │
-│  │  │ Auth     │ │ Request  │ │ Zse96Signer    │ │ │
-│  │  │ Manager  │ │ Client   │ │ (签名生成)     │ │ │
-│  │  └──────────┘ └──────────┘ └────────────────┘ │ │
-│  └────────────────────────────────────────────────┘ │
-│  ┌────────────────────────────────────────────────┐ │
-│  │              MarkdownRenderer                    │ │
-│  │  ┌──────────┐ ┌──────────┐ ┌────────────────┐ │ │
-│  │  │ Markdown │ │ Image    │ │ LaTeX/Mermaid  │ │ │
-│  │  │ → HTML   │ │ Uploader │ │ Processor      │ │ │
-│  │  └──────────┘ └──────────┘ └────────────────┘ │ │
-│  └────────────────────────────────────────────────┘ │
-└─────────────────────────────────────────────────────┘
-         │
-    HTTP API
-    zhuanlan.zhihu.com / www.zhihu.com
+```mermaid
+graph TB
+    subgraph VSCode_Extension["VSCode Extension"]
+        Commands["Commands<br/>(extension.ts)"]
+        Settings["Settings<br/>Service"]
+        WebView["WebView<br/>Preview"]
+        
+        subgraph ZhihuApiService["ZhihuApiService"]
+            Auth["Auth<br/>Manager"]
+            Request["Request<br/>Client"]
+            Zse96Signer["Zse96Signer<br/>(签名生成)"]
+        end
+        
+        subgraph MarkdownRenderer["MarkdownRenderer"]
+            MD2HTML["Markdown<br/>→ HTML"]
+            ImageUploader["Image<br/>Uploader"]
+            LatexMermaid["LaTeX/Mermaid<br/>Processor"]
+        end
+    end
+    
+    Commands --> ZhihuApiService
+    Settings --> ZhihuApiService
+    WebView --> MarkdownRenderer
+    ZhihuApiService --> MarkdownRenderer
+    
+    VSCode_Extension -->|"HTTP API<br/>zhuanlan.zhihu.com<br/>www.zhihu.com"| External["知乎 API"]
+    
+    style VSCode_Extension fill:#e1f5ff,stroke:#01579b
+    style ZhihuApiService fill:#fff9c4,stroke:#f57f17
+    style MarkdownRenderer fill:#e8f5e9,stroke:#2e7d32
+    style External fill:#ffecb3,stroke:#ff6f00
 ```
 
 ### 1.2 核心组件
@@ -53,98 +58,153 @@ ZhihuPost 采用 API 驱动架构，通过知乎内部 Web API 完成发布、�
 
 ### 2.1 发布文章数据流
 
-```
-Markdown 文件
-     │
-     ▼
-extractTitle() ──→ 标题
-     │
-     ▼
-MarkdownRenderer.render() ──→ 知乎兼容 HTML
-     │                          │
-     │                     ImageUploader.upload()
-     │                          │
-     │                     替换图片 URL 为知乎 CDN
-     ▼
-ZhihuApiService.publishArticle()
-     │
-     ├── 1. CookieManager.load() → 加载 Cookie
-     ├── 2. CookieManager.validate() → 调用 /api/v4/me 验证
-     ├── 3. Zse96Signer.sign() → 生成请求签名
-     ├── 4. POST /api/posts → 发布文章
-     └── 5. 返回文章 URL
-     │
-     ▼
-   文章 URL
+```mermaid
+graph TD
+    MD["Markdown 文件"]
+    Title["extractTitle()"]
+    TitleResult["标题"]
+    Renderer["MarkdownRenderer.render()"]
+    HTML["知乎兼容 HTML"]
+    Uploader["ImageUploader.upload()"]
+    Replace["替换图片 URL 为知乎 CDN"]
+    Publish["ZhihuApiService.publishArticle()"]
+    LoadCookie["1. CookieManager.load()<br/>加载 Cookie"]
+    Validate["2. CookieManager.validate()<br/>调用 /api/v4/me 验证"]
+    Sign["3. Zse96Signer.sign()<br/>生成请求签名"]
+    Post["4. POST /api/posts<br/>发布文章"]
+    ReturnURL["5. 返回文章 URL"]
+    ArticleURL["文章 URL"]
+    
+    MD --> Title
+    Title --> TitleResult
+    TitleResult --> Renderer
+    Renderer --> HTML
+    HTML --> Uploader
+    Uploader --> Replace
+    Replace --> Publish
+    Publish --> LoadCookie
+    LoadCookie --> Validate
+    Validate --> Sign
+    Sign --> Post
+    Post --> ReturnURL
+    ReturnURL --> ArticleURL
+    
+    style MD fill:#e3f2fd,stroke:#1565c0
+    style ArticleURL fill:#c8e6c9,stroke:#2e7d32
+    style Publish fill:#fff9c4,stroke:#f57f17
 ```
 
 ### 2.2 登录流程
 
-```
-首次登录（纯 HTTP 二维码）:
-  POST /api/v3/account/api/login/qrcode → 获取 token/link →
-  用户用知乎 App 扫码确认 → 轮询 scan_info →
-  保存到 ~/.zhihupost/cookies.json
-
-后续使用（纯 HTTP）:
-  CookieManager.load() → CookieManager.validate() → 有效则继续
-                                              → 无效则提示重新扫码
-
-手动 Cookie 登录:
-  用户从浏览器 DevTools 复制 Cookie →
-  CookieManager.save(cookieString) → 直接使用，无需扫码
+```mermaid
+graph TD
+    subgraph FirstLogin["首次登录（纯 HTTP 二维码）"]
+        QRCode["POST /api/v3/account/api/login/qrcode"]
+        TokenLink["获取 token/link"]
+        Scan["用户用知乎 App 扫码确认"]
+        Poll["轮询 scan_info"]
+        Save["保存到 ~/.zhihupost/cookies.json"]
+        
+        QRCode --> TokenLink
+        TokenLink --> Scan
+        Scan --> Poll
+        Poll --> Save
+    end
+    
+    subgraph SubsequentUse["后续使用（纯 HTTP）"]
+        Load["CookieManager.load()"]
+        Validate["CookieManager.validate()"]
+        Valid["有效则继续"]
+        Invalid["无效则提示重新扫码"]
+        
+        Load --> Validate
+        Validate --> Valid
+        Validate --> Invalid
+    end
+    
+    subgraph ManualLogin["手动 Cookie 登录"]
+        Copy["用户从浏览器 DevTools 复制 Cookie"]
+        SaveCookie["CookieManager.save(cookieString)"]
+        Use["直接使用，无需扫码"]
+        
+        Copy --> SaveCookie
+        SaveCookie --> Use
+    end
+    
+    Save --> Load
+    
+    style FirstLogin fill:#e1f5fe,stroke:#0277bd
+    style SubsequentUse fill:#fff3e0,stroke:#ef6c00
+    style ManualLogin fill:#f3e5f5,stroke:#7b1fa2
 ```
 
 ### 2.3 图片上传流程
 
-```
-Markdown 中的本地/远程图片
-     │
-     ├── 本地图片: 直接读取文件
-     └── 远程图片: 下载到临时目录
-     │
-     ▼
-Zse96Signer.sign("POST", "/api/v4/images")
-     │
-     ▼
-POST /api/v4/images (multipart/form-data)
-     │
-     ▼
-知乎 CDN URL → 替换 HTML 中的 img src
+```mermaid
+graph TD
+    Images["Markdown 中的本地/远程图片"]
+    Local["本地图片: 直接读取文件"]
+    Remote["远程图片: 下载到临时目录"]
+    Sign["Zse96Signer.sign<br/>(POST, /api/v4/images)"]
+    Post["POST /api/v4/images<br/>(multipart/form-data)"]
+    CDN["知乎 CDN URL"]
+    Replace["替换 HTML 中的 img src"]
+    
+    Images --> Local
+    Images --> Remote
+    Local --> Sign
+    Remote --> Sign
+    Sign --> Post
+    Post --> CDN
+    CDN --> Replace
+    
+    style Images fill:#e3f2fd,stroke:#1565c0
+    style CDN fill:#c8e6c9,stroke:#2e7d32
+    style Replace fill:#fff9c4,stroke:#f57f17
 ```
 
 ### 2.4 文件夹批量发布流程
 
-```
-用户选择文件夹 / 右键文件夹命令
-     │
-     ▼
-BatchPublishService.discoverMarkdownFiles()
-     │
-     ├── 过滤隐藏目录、node_modules、.git
-     ├── 匹配 .md / .markdown
-     └── 按配置排序
-     │
-     ▼
-BatchPublishService.preflight()
-     │
-     ├── 读取每个 Markdown
-     ├── extractTitle() 提取标题
-     ├── 标记缺少标题/空文件等跳过项
-     └── 展示预检摘要并等待用户确认
-     │
-     ▼
-BatchPublishService.publishQueue()
-     │
-     ├── 逐篇调用单篇发布流程
-     ├── 每篇之间按配置延迟
-     ├── 单篇失败按配置继续或停止
-     └── 实时写入 OutputChannel 日志
-     │
-     ▼
-BatchReportWriter.write()
-     │
-     └── 生成成功/失败/跳过报告
+```mermaid
+graph TD
+    UserSelect["用户选择文件夹 / 右键文件夹命令"]
+    Discover["BatchPublishService.discoverMarkdownFiles()"]
+    Filter1["过滤隐藏目录、node_modules、.git"]
+    Match["匹配 .md / .markdown"]
+    Sort["按配置排序"]
+    Preflight["BatchPublishService.preflight()"]
+    ReadMD["读取每个 Markdown"]
+    ExtractTitle["extractTitle() 提取标题"]
+    MarkSkip["标记缺少标题/空文件等跳过项"]
+    ShowSummary["展示预检摘要并等待用户确认"]
+    PublishQueue["BatchPublishService.publishQueue()"]
+    PublishOne["逐篇调用单篇发布流程"]
+    Delay["每篇之间按配置延迟"]
+    HandleError["单篇失败按配置继续或停止"]
+    Log["实时写入 OutputChannel 日志"]
+    WriteReport["BatchReportWriter.write()"]
+    Report["生成成功/失败/跳过报告"]
+    
+    UserSelect --> Discover
+    Discover --> Filter1
+    Filter1 --> Match
+    Match --> Sort
+    Sort --> Preflight
+    Preflight --> ReadMD
+    ReadMD --> ExtractTitle
+    ExtractTitle --> MarkSkip
+    MarkSkip --> ShowSummary
+    ShowSummary --> PublishQueue
+    PublishQueue --> PublishOne
+    PublishOne --> Delay
+    Delay --> HandleError
+    HandleError --> Log
+    Log --> WriteReport
+    WriteReport --> Report
+    
+    style UserSelect fill:#e3f2fd,stroke:#1565c0
+    style Report fill:#c8e6c9,stroke:#2e7d32
+    style PublishQueue fill:#fff9c4,stroke:#f57f17
 ```
 
 批量发布默认串行执行，不做并发发布。原因是知乎发布接口存在频率限制和风控，串行队列更容易定位失败项，也便于后续从报告续跑。
@@ -329,14 +389,20 @@ class BatchPublishService {
 
 ### 5.1 签名算法
 
-```
-签名输入 = f"101_3_3.0" + "+" + d_c0 + "+" + 方法 + "+" + URL路径 + "+" + 请求体
-  ↓
-MD5 哈希 (小写)
-  ↓
-自定义加密 (基于 zhihu_zse96 的 encrypt 函数)
-  ↓
-"2.0_" + Base64(加密结果)
+```mermaid
+graph TD
+    Input["签名输入 = f'101_3_3.0' + '+' + d_c0 + '+' + 方法 + '+' + URL路径 + '+' + 请求体"]
+    MD5["MD5 哈希 (小写)"]
+    Encrypt["自定义加密<br/>(基于 zhihu_zse96 的 encrypt 函数)"]
+    Output["'2.0_' + Base64(加密结果)"]
+    
+    Input --> MD5
+    MD5 --> Encrypt
+    Encrypt --> Output
+    
+    style Input fill:#e3f2fd,stroke:#1565c0
+    style Output fill:#c8e6c9,stroke:#2e7d32
+    style Encrypt fill:#fff9c4,stroke:#f57f17
 ```
 
 ### 5.2 实现策略
@@ -369,44 +435,108 @@ MD5 哈希 (小写)
 
 ## 7. 文件结构
 
-```
-zhihupost/
-├── src/
-│   ├── extension.ts                # 插件入口，命令注册
-│   ├── services/
-│   │   ├── ZhihuApiService.ts      # API 调用核心
-│   │   ├── BatchPublishService.ts  # 文件夹批量发布编排
-│   │   ├── QrLoginService.ts       # 纯 HTTP 二维码登录
-│   │   ├── Zse96Signer.ts          # x-zse-96 签名生成
-│   │   ├── CookieManager.ts        # Cookie 持久化与验证
-│   │   └── SettingsService.ts      # VSCode 配置读写
-│   ├── utils/
-│   │   ├── extractTitle.ts         # 提取 Markdown 标题
-│   │   ├── MarkdownRenderer.ts     # Markdown → 知乎 HTML
-│   │   └── ImageUploader.ts        # 图片上传到知乎 CDN
-│   └── test/
-│       ├── unit/
-│       │   ├── extractTitle.test.ts
-│       │   ├── MarkdownRenderer.test.ts
-│       │   ├── Zse96Signer.test.ts
-│       │   ├── CookieManager.test.ts
-│       │   ├── SettingsService.test.ts
-│       │   ├── BatchPublishService.test.ts
-│       │   ├── ImageUploader.test.ts
-│       │   └── QrLoginService.test.ts
-│       └── __mocks__/
-├── docs/
-│   ├── PRD.md
-│   ├── ARCHITECTURE.md
-│   └── DEVLOG.md
-├── media/
-│   ├── icon.png
-│   └── icons/
-├── package.json
-├── tsconfig.json
-├── jest.config.js
-├── .gitignore
-└── README.md
+```mermaid
+graph TD
+    Root["zhihupost/"]
+    
+    subgraph src["src/"]
+        extension["extension.ts<br/>插件入口，命令注册"]
+        
+        subgraph services["services/"]
+            ZhihuApi["ZhihuApiService.ts<br/>API 调用核心"]
+            BatchPublish["BatchPublishService.ts<br/>文件夹批量发布编排"]
+            QrLogin["QrLoginService.ts<br/>纯 HTTP 二维码登录"]
+            Zse96Signer["Zse96Signer.ts<br/>x-zse-96 签名生成"]
+            CookieManager["CookieManager.ts<br/>Cookie 持久化与验证"]
+            SettingsService["SettingsService.ts<br/>VSCode 配置读写"]
+        end
+        
+        subgraph utils["utils/"]
+            extractTitle["extractTitle.ts<br/>提取 Markdown 标题"]
+            MarkdownRenderer["MarkdownRenderer.ts<br/>Markdown → 知乎 HTML"]
+            ImageUploader["ImageUploader.ts<br/>图片上传到知乎 CDN"]
+        end
+        
+        subgraph test["test/"]
+            subgraph unit["unit/"]
+                extractTitleTest["extractTitle.test.ts"]
+                MarkdownRendererTest["MarkdownRenderer.test.ts"]
+                Zse96SignerTest["Zse96Signer.test.ts"]
+                CookieManagerTest["CookieManager.test.ts"]
+                SettingsServiceTest["SettingsService.test.ts"]
+                BatchPublishServiceTest["BatchPublishService.test.ts"]
+                ImageUploaderTest["ImageUploader.test.ts"]
+                QrLoginServiceTest["QrLoginService.test.ts"]
+            end
+            mocks["__mocks__/"]
+        end
+    end
+    
+    subgraph docs["docs/"]
+        PRD["PRD.md"]
+        ARCHITECTURE["ARCHITECTURE.md"]
+        DEVLOG["DEVLOG.md"]
+    end
+    
+    subgraph media["media/"]
+        icon["icon.png"]
+        icons["icons/"]
+    end
+    
+    packageJson["package.json"]
+    tsconfig["tsconfig.json"]
+    jestConfig["jest.config.js"]
+    gitignore[".gitignore"]
+    README["README.md"]
+    
+    Root --> src
+    Root --> docs
+    Root --> media
+    Root --> packageJson
+    Root --> tsconfig
+    Root --> jestConfig
+    Root --> gitignore
+    Root --> README
+    
+    src --> extension
+    src --> services
+    src --> utils
+    src --> test
+    
+    services --> ZhihuApi
+    services --> BatchPublish
+    services --> QrLogin
+    services --> Zse96Signer
+    services --> CookieManager
+    services --> SettingsService
+    
+    utils --> extractTitle
+    utils --> MarkdownRenderer
+    utils --> ImageUploader
+    
+    test --> unit
+    test --> mocks
+    
+    unit --> extractTitleTest
+    unit --> MarkdownRendererTest
+    unit --> Zse96SignerTest
+    unit --> CookieManagerTest
+    unit --> SettingsServiceTest
+    unit --> BatchPublishServiceTest
+    unit --> ImageUploaderTest
+    unit --> QrLoginServiceTest
+    
+    docs --> PRD
+    docs --> ARCHITECTURE
+    docs --> DEVLOG
+    
+    media --> icon
+    media --> icons
+    
+    style Root fill:#e3f2fd,stroke:#1565c0
+    style src fill:#fff9c4,stroke:#f57f17
+    style docs fill:#e8f5e9,stroke:#2e7d32
+    style media fill:#f3e5f5,stroke:#7b1fa2
 ```
 
 ## 8. 依赖
