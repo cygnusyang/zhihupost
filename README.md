@@ -126,7 +126,7 @@ npm run test:coverage
 
 ## Current Status
 
-Version `0.3.0` includes:
+Version `0.3.1` includes:
 - Core publishing flow
 - Folder batch publishing
 - Scheduled publishing with cross-platform task scheduling
@@ -137,6 +137,7 @@ Version `0.3.0` includes:
 - Preview
 - Settings
 - Unit tests
+- Extension icon
 
 ## Notes
 
