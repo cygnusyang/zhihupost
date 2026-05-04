@@ -2,7 +2,7 @@
   "name": "zhihupost",
   "displayName": "ZhihuPost",
   "description": "Publish Markdown directly to Zhihu from VSCode via API",
-  "version": "0.3.1",
+  "version": "0.3.2",
   "publisher": "cygnus",
   "icon": "media/icon.png",
   "license": "MIT",
@@ -189,7 +189,7 @@
     "test": "jest",
     "test:coverage": "jest --coverage --coverageReporters=json-summary",
     "install-cli": "node scripts/install-cli.js",
-    "postcompile": "npm run install-cli"
+    "build:cli": "npm run compile && npm run install-cli"
   },
   "dependencies": {
     "@types/qrcode-generator": "^0.0.16",

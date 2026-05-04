@@ -122,11 +122,12 @@ npm run compile
 npm run watch
 npm test
 npm run test:coverage
+npx vsce package --out zhihupost-0.3.2.vsix
 ```
 
 ## Current Status
 
-Version `0.3.1` includes:
+Version `0.3.2` includes:
 - Core publishing flow
 - Folder batch publishing
 - Scheduled publishing with cross-platform task scheduling
@@ -137,7 +138,7 @@ Version `0.3.1` includes:
 - Preview
 - Settings
 - Unit tests
-- Extension icon
+- Extension icon packaged as `media/icon.png`
 
 ## Notes
 
