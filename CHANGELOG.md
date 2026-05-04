@@ -5,6 +5,52 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.3.0] - 2026-05-04
+
+### Added
+
+- **Scheduled publishing**:
+  - New command: `ZhihuPost: Schedule Publish` — schedule a Markdown file for later publishing
+  - New command: `ZhihuPost: List Scheduled Tasks` — view and manage all scheduled tasks
+  - New command: `ZhihuPost: Delete Scheduled Task` — remove a scheduled task
+  - New command: `ZhihuPost: Edit Scheduled Task` — modify an existing scheduled task
+  - Cross-platform scheduling: uses `cron` on macOS/Linux and `Task Scheduler` on Windows
+  - CLI for background task execution: `zhihupost-publish --task-id <id>`
+  - Task persistence: stored in `~/.zhihupost/tasks.json`
+  - Missed task handling:
+    - Single missed task: runs immediately on next extension activation
+    - Multiple missed tasks: rescheduled with original relative intervals preserved
+  - Retry logic with configurable max attempts
+  - Task status tracking (pending, running, completed, failed)
+  - Execution report with success/failure status, article URL, and error messages
+  - Task result notifications in VSCode
+
+- **Mermaid diagram support**:
+  - Automatic conversion of ` ```mermaid ` code blocks to PNG images during preview and publishing
+  - Uses Playwright + Chromium for server-side rendering
+  - Images are temporarily stored in OS temp directory during rendering
+  - Automatically uploaded to Zhihu CDN during publishing
+  - Fallback to original code block if rendering fails
+  - Max dimension constraints for optimal display on Zhihu
+
+- **CLI installation**:
+  - `npm run install-cli` installs the CLI to `~/.zhihupost/cli/`
+  - `postcompile` hook automatically installs CLI after build
+  - Auto-detects CLI path from extension or user's home directory
+
+### Packaging
+
+- Bumped version to 0.3.0
+- Added dependencies: `uuid`, `commander`
+- Added `@types/uuid` for TypeScript support
+- Added Playwright back as a dependency for Mermaid rendering
+
+### Architecture
+
+- Updated `docs/ARCHITECTURE.md` with Mermaid diagrams showing the new scheduled publishing flow
+- Task storage layer uses atomic write operations to prevent corruption
+- Platform scheduler abstraction provides clean separation between cron and Task Scheduler implementations
+
 ## [0.2.0] - 2026-05-04
 
 ### Added

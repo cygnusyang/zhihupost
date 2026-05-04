@@ -18,6 +18,12 @@ graph TB
             Request["Request<br/>Client"]
             Zse96Signer["Zse96Signer<br/>(签名生成)"]
         end
+
+        subgraph ScheduledPublishing["Scheduled Publishing"]
+            ScheduledTaskService["ScheduledTaskService"]
+            TaskStorage["TaskStorage<br/>~/.zhihupost/scheduled-tasks.json"]
+            PlatformScheduler["PlatformScheduler<br/>cron / Task Scheduler"]
+        end
         
         subgraph MarkdownRenderer["MarkdownRenderer"]
             MD2HTML["Markdown<br/>→ HTML"]
@@ -25,8 +31,20 @@ graph TB
             LatexMermaid["LaTeX/Mermaid<br/>Processor"]
         end
     end
+
+    subgraph BackgroundRuntime["Background Runtime"]
+        CLI["zhihupost-publish CLI"]
+        CLIPublisher["CLIPublisher"]
+    end
     
     Commands --> ZhihuApiService
+    Commands --> ScheduledTaskService
+    ScheduledTaskService --> TaskStorage
+    ScheduledTaskService --> PlatformScheduler
+    PlatformScheduler -->|"到点执行"| CLI
+    CLI --> CLIPublisher
+    CLIPublisher --> TaskStorage
+    CLIPublisher --> ZhihuApiService
     Settings --> ZhihuApiService
     WebView --> MarkdownRenderer
     ZhihuApiService --> MarkdownRenderer
@@ -50,6 +68,12 @@ graph TB
 | **CookieManager** | `src/services/CookieManager.ts` | Cookie 持久化与验证 |
 | **SettingsService** | `src/services/SettingsService.ts` | 读写 VSCode 配置项 |
 | **BatchPublishService** | `src/services/BatchPublishService.ts` | 文件夹批量发布编排：发现文件、预检、队列执行、报告生成 |
+| **ScheduledTaskService** | `src/services/ScheduledTaskService.ts` | 定时发布编排：创建任务、更新/删除任务、错过任务检测、失败重试 |
+| **TaskStorage** | `src/services/TaskStorage.ts` | 定时任务本地存储：`~/.zhihupost/scheduled-tasks.json` 与执行报告目录 |
+| **PlatformScheduler** | `src/services/PlatformScheduler.ts` | 平台调度抽象：macOS/Linux 使用 cron，Windows 使用 Task Scheduler |
+| **CronManager** | `src/services/CronManager.ts` | 安装、删除、列出 ZhihuPost cron 条目 |
+| **WindowsTaskScheduler** | `src/services/WindowsTaskScheduler.ts` | 通过 `schtasks.exe` 安装、删除、列出 Windows 一次性任务 |
+| **CLIPublisher** | `src/cli/CLIPublisher.ts` | 被系统调度器唤起后的后台发布执行器 |
 | **MarkdownRenderer** | `src/utils/MarkdownRenderer.ts` | Markdown → 知乎兼容 HTML |
 | **ImageUploader** | `src/utils/ImageUploader.ts` | 图片上传到知乎 CDN |
 | **extractTitle** | `src/utils/extractTitle.ts` | 从 Markdown 提取标题 |
@@ -209,6 +233,74 @@ graph TD
 
 批量发布默认串行执行，不做并发发布。原因是知乎发布接口存在频率限制和风控，串行队列更容易定位失败项，也便于后续从报告续跑。
 
+### 2.5 定时发布流程
+
+```mermaid
+graph TD
+    Command["ZhihuPost: Schedule Publish"]
+    ActiveEditor["读取当前 Markdown 文件"]
+    InputTime["输入本地时间<br/>YYYY-MM-DD HH:MM"]
+    PickMode["选择直接发布 / 保存草稿"]
+    ValidateFile["ScheduledTaskService.validateFile()<br/>检查文件存在和 H1 标题"]
+    ValidateLogin["ZhihuApiService.isLoggedIn()<br/>确认已有知乎登录态"]
+    CreateTask["创建 ScheduledTask<br/>UUID + 文件路径 + 发布时间 + 发布选项"]
+    SaveTask["TaskStorage.saveTask()<br/>写入 ~/.zhihupost/scheduled-tasks.json"]
+    InstallScheduler["PlatformScheduler.installScheduledTask()"]
+    Cron["macOS/Linux: cron<br/>node cli/index.js --task-id"]
+    WinTask["Windows: schtasks /create /sc once"]
+    Trigger["系统调度器到点唤起 CLI"]
+    CLILoad["CLIPublisher.executeTask()<br/>按 taskId 读取任务"]
+    MarkRunning["标记 running"]
+    ReadFile["读取 Markdown 并提取标题"]
+    Publish["复用 ZhihuApiService.publishArticle()<br/>sourceBaseDir = Markdown 所在目录"]
+    MarkDone["成功: completed + result"]
+    MarkFailed["失败: failed + error"]
+    Report["写入 scheduled-tasks-reports/task-*.md"]
+    DeleteTask["按 deleteOnSuccess 删除任务"]
+
+    Command --> ActiveEditor
+    ActiveEditor --> InputTime
+    InputTime --> PickMode
+    PickMode --> ValidateFile
+    ValidateFile --> ValidateLogin
+    ValidateLogin --> CreateTask
+    CreateTask --> SaveTask
+    SaveTask --> InstallScheduler
+    InstallScheduler --> Cron
+    InstallScheduler --> WinTask
+    Cron --> Trigger
+    WinTask --> Trigger
+    Trigger --> CLILoad
+    CLILoad --> MarkRunning
+    MarkRunning --> ReadFile
+    ReadFile --> Publish
+    Publish --> MarkDone
+    Publish --> MarkFailed
+    MarkDone --> Report
+    MarkFailed --> Report
+    Report --> DeleteTask
+
+    style Command fill:#e3f2fd,stroke:#1565c0
+    style InstallScheduler fill:#fff9c4,stroke:#f57f17
+    style Publish fill:#fff9c4,stroke:#f57f17
+    style Report fill:#c8e6c9,stroke:#2e7d32
+```
+
+定时发布不依赖 VSCode 进程常驻。VSCode 只负责创建任务、保存任务元数据，并把一次性执行命令注册到操作系统调度器；真正到点发布时，由系统调度器启动 Node CLI，再由 CLI 读取同一份任务存储并复用 `ZhihuApiService.publishArticle()` 完成发布。
+
+实现细节：
+
+- 用户入口是 `zhihupost.schedulePublish`，命令面板标题为 `ZhihuPost: Schedule Publish`。它要求当前活动编辑器是 Markdown 文件，发布时间按本地时间输入，随后选择直接发布或保存草稿。
+- `ScheduledTaskService.scheduleTask()` 会先校验文件存在、文章有 H1 标题、知乎登录态有效，然后生成 UUID 任务，保存 `filePath`、`originalScheduledTime`、`scheduledTime`、发布选项、重试次数和成功后是否删除等字段。
+- `TaskStorage` 默认使用 `~/.zhihupost/scheduled-tasks.json` 存储任务列表，执行报告写入 `~/.zhihupost/scheduled-tasks-reports/`。这让 VSCode 命令、系统调度器和后台 CLI 可以共享同一份状态。
+- `AutoPlatformScheduler` 根据 `os.platform()` 选择调度后端：Windows 使用 `WindowsTaskScheduler`，其他平台使用 `CronManager`。
+- macOS/Linux 上，`CronManager` 把 ISO 时间转换成 cron 的本地时间表达式，并追加两行 crontab：`# ZhihuPost task <id>` 注释和 `node <cliPath> --task-id <id> >> ~/.zhihupost/scheduled-tasks-reports/cron.log 2>&1` 执行命令。
+- Windows 上，`WindowsTaskScheduler` 通过 `schtasks /create /sc once /st <HH:mm> /sd <MM/dd/yyyy>` 创建一次性任务，任务名为 `ZhihuPost-<id>`，执行命令同样是 Node CLI 加 `--task-id <id>`。
+- CLI 入口是 `src/cli/index.ts`，命令名为 `zhihupost-publish`。它初始化 `TaskStorage` 和 `ZhihuApiService`，然后调用 `CLIPublisher.executeTask(taskId)`。
+- `CLIPublisher` 执行时会把任务标记为 `running`，重新读取 Markdown、提取标题、检查登录态，再调用 `ZhihuApiService.publishArticle()`。这里传入 `sourceBaseDir: path.dirname(task.filePath)`，确保定时任务里的相对图片路径仍按原 Markdown 文件所在目录解析。
+- 发布成功后任务状态写为 `completed`，记录文章 ID、URL、耗时并生成报告；如果 `deleteOnSuccess` 为 `true`，任务会从 `scheduled-tasks.json` 删除。失败时任务状态写为 `failed`，报告中记录错误信息，用户可以从任务列表里触发重试。
+- VSCode 插件激活时会调用 `detectAndHandleMissedTasks()`：如果有 `pending` 任务的计划时间已过，单个错过任务会改到当前时间立即重新安装调度；多个错过任务会按原始计划时间的相对间隔整体平移，避免恢复后同时发布多篇。
+
 ## 3. 核心组件详细设计
 
 ### 3.1 ZhihuApiService
@@ -293,6 +385,7 @@ interface PublishArticleParams {
   coverImage?: string;    // 封面图本地路径
   publishDirectly: boolean;
   contentStyle: ContentStyleSettings;
+  sourceBaseDir?: string;  // Markdown 所在目录，用于解析相对图片路径
 }
 
 interface PublishResult {
@@ -372,6 +465,64 @@ class BatchPublishService {
 - 每篇文章发布前后都要输出结构化日志：文件路径、标题、文章 ID、URL、错误码、耗时。
 - 第一版不自动写回 Markdown frontmatter，避免意外改动用户文章；去重和续跑索引作为后续能力设计。
 
+### 3.7 Scheduled Publishing
+
+```typescript
+interface ScheduledTask {
+  id: string;
+  filePath: string;
+  originalScheduledTime: string;
+  scheduledTime: string;
+  createdAt: string;
+  lastExecutedAt: string | null;
+  status: 'pending' | 'running' | 'completed' | 'failed';
+  attemptCount: number;
+  maxRetries: number;
+  deleteOnSuccess: boolean;
+  publishOptions: {
+    topics?: string[];
+    column?: string;
+    publishDirectly: boolean;
+    contentStyle: ContentStyleSettings;
+  };
+  result?: {
+    executedAt: string;
+    success: boolean;
+    articleId?: number;
+    articleUrl?: string;
+    error?: string;
+    errorCode?: number;
+    durationMs: number;
+  };
+}
+
+class ScheduledTaskService {
+  async scheduleTask(options: ScheduledTaskCreateOptions): Promise<ScheduledTask>;
+  async getAllTasks(): Promise<ScheduledTask[]>;
+  async getTask(taskId: string): Promise<ScheduledTask | null>;
+  async updateTask(task: ScheduledTask): Promise<void>;
+  async deleteTask(taskId: string): Promise<void>;
+  async detectAndHandleMissedTasks(): Promise<ScheduledTask[]>;
+  async retryFailedTask(taskId: string): Promise<ScheduledTask>;
+}
+
+interface PlatformScheduler {
+  installScheduledTask(task: ScheduledTask): Promise<void>;
+  removeScheduledTask(taskId: string): Promise<void>;
+  listScheduledTasks(): Promise<Array<{ taskId: string; info: string }>>;
+}
+```
+
+实现约束：
+
+- 定时发布必须通过操作系统调度器唤起 CLI，不能依赖 VSCode 窗口一直打开。
+- 调度器只保存“到点执行哪个 taskId”的命令，发布参数和状态以 `TaskStorage` 为准。
+- 创建任务时要先保存本地任务，再安装系统调度；如果安装失败，必须回滚删除本地任务，避免出现不会被执行的悬挂任务。
+- 编辑任务时先移除旧系统调度，再更新本地任务并安装新调度。
+- 删除任务时同时删除系统调度和本地任务。
+- CLI 执行路径必须复用单篇发布链路，避免定时发布和手动发布产生不同渲染、图片上传或 API 行为。
+- 失败任务由用户手动重试；重试使用指数退避重新安排，当前实现为第 1/2/3 次重试分别约 2/4/8 分钟后执行。
+
 ## 4. API 模式 vs 浏览器模式对比
 
 | 维度 | API 模式 (选定) | 浏览器模式 (不选) |
@@ -445,10 +596,25 @@ graph TD
         subgraph services["services/"]
             ZhihuApi["ZhihuApiService.ts<br/>API 调用核心"]
             BatchPublish["BatchPublishService.ts<br/>文件夹批量发布编排"]
+            ScheduledTask["ScheduledTaskService.ts<br/>定时发布编排"]
+            TaskStorage["TaskStorage.ts<br/>定时任务存储"]
+            PlatformScheduler["PlatformScheduler.ts<br/>平台调度抽象"]
+            CronManager["CronManager.ts<br/>cron 管理"]
+            WindowsTaskScheduler["WindowsTaskScheduler.ts<br/>Windows Task Scheduler 管理"]
             QrLogin["QrLoginService.ts<br/>纯 HTTP 二维码登录"]
             Zse96Signer["Zse96Signer.ts<br/>x-zse-96 签名生成"]
             CookieManager["CookieManager.ts<br/>Cookie 持久化与验证"]
             SettingsService["SettingsService.ts<br/>VSCode 配置读写"]
+        end
+
+        subgraph cli["cli/"]
+            CLIIndex["index.ts<br/>zhihupost-publish 入口"]
+            CLIPublisher["CLIPublisher.ts<br/>定时任务执行"]
+            CLILogger["CLILogger.ts<br/>CLI 日志"]
+        end
+
+        subgraph types["types/"]
+            ScheduledTaskType["ScheduledTask.ts<br/>定时任务类型"]
         end
         
         subgraph utils["utils/"]
@@ -500,15 +666,26 @@ graph TD
     
     src --> extension
     src --> services
+    src --> cli
+    src --> types
     src --> utils
     src --> test
     
     services --> ZhihuApi
     services --> BatchPublish
+    services --> ScheduledTask
+    services --> TaskStorage
+    services --> PlatformScheduler
+    services --> CronManager
+    services --> WindowsTaskScheduler
     services --> QrLogin
     services --> Zse96Signer
     services --> CookieManager
     services --> SettingsService
+    cli --> CLIIndex
+    cli --> CLIPublisher
+    cli --> CLILogger
+    types --> ScheduledTaskType
     
     utils --> extractTitle
     utils --> MarkdownRenderer

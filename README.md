@@ -8,11 +8,13 @@ ZhihuPost 是一个 VSCode 插件，用于把当前 Markdown 文件转换为知�
 
 - Publish the current Markdown file to Zhihu.
 - Publish all Markdown files in a selected folder with preflight confirmation and a final report.
+- **Schedule publishing** for later with cross-platform task scheduling (cron on macOS/Linux, Task Scheduler on Windows).
 - Save articles as drafts instead of publishing immediately.
 - Login with browser-assisted cookie extraction, pure HTTP QR code flow, or pasted browser cookie string.
 - Display Zhihu QR login as an in-editor WebView QR code.
 - Persist cookies locally at `~/.zhihupost/cookies.json` with `0600` permissions.
 - Render Markdown with `markdown-it`.
+- **Mermaid diagram support**: automatically convert ` ```mermaid ` code blocks to PNG images during preview and publishing.
 - Strip the leading H1 title from article body and send it as the Zhihu title.
 - Upload local images to Zhihu CDN before publishing.
 - Search and attach default Zhihu topics.
@@ -41,6 +43,10 @@ Then open this folder in VSCode and press `F5` to launch the extension host.
 | --- | --- |
 | `ZhihuPost: Publish to Zhihu` | Publish the active Markdown file |
 | `ZhihuPost: Publish Folder to Zhihu` | Publish Markdown files from a selected folder |
+| `ZhihuPost: Schedule Publish` | Schedule a Markdown file for later publishing |
+| `ZhihuPost: List Scheduled Tasks` | View and manage all scheduled tasks |
+| `ZhihuPost: Delete Scheduled Task` | Remove a scheduled task |
+| `ZhihuPost: Edit Scheduled Task` | Modify an existing scheduled task |
 | `ZhihuPost: Login to Zhihu` | Login with QR code or cookie paste |
 | `ZhihuPost: Sign Out of Zhihu` | Clear stored Zhihu cookies |
 | `ZhihuPost: Configure Publishing Options` | Open ZhihuPost settings |
@@ -120,14 +126,17 @@ npm run test:coverage
 
 ## Current Status
 
-Version `0.1.0` includes the core publishing flow, folder batch publishing, authentication, Markdown rendering, local image upload, preview, settings, and unit tests.
-
-Verified locally:
-
-```text
-Test Suites: 8 passed
-Tests: 49 passed
-```
+Version `0.3.0` includes:
+- Core publishing flow
+- Folder batch publishing
+- Scheduled publishing with cross-platform task scheduling
+- Mermaid diagram support
+- Authentication (browser, QR, cookie paste)
+- Markdown rendering with theme presets
+- Local image upload
+- Preview
+- Settings
+- Unit tests
 
 ## Notes
 
