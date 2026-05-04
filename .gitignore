@@ -4,3 +4,4 @@ out/
 .vscode-test/
 coverage/
 cookies/
+.DS_Store
